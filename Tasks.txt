@@ -1,0 +1,26 @@
+game:
+*double jump
+*end screen when reach last level
+*title screen
+*fix character rect/size
+*fix attack animation
+*fix slide and crouch
+-add dope music
+*add collectible diamond
+- prevent more than double jump
+
+level editor:
+- ask if they are sure they wanna save and tell user that they cannot undo this action.
+* confirm that save was successful/unsuccesful
+* confirm that load was succesful/unsuccesful
+-switch player from soldier to adventurer
+-switch enemy from soldier to snakes
+
+enemies:
+*instantiating
+*drawing
+*moving
+*attacking player
+*taking damage
+*death
+
