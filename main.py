@@ -1,16 +1,16 @@
 import pygame, enum, os, time, random, csv, button
-from pygame import mixer
 
+from pygame.draw import rect
+from pygame import mixer
 # INITIALIZATION
 # ------------------------------------------------------------------------------------------------------------------------
 pygame.init()
 mixer.init()
-
 SCREEN_WIDTH = 1000
 SCREEN_HEIGHT = int(SCREEN_WIDTH * 0.8)
 
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption('Forest Levels')
+pygame.display.set_caption('Diamond Adventure')
 clock = pygame.time.Clock()
 FPS = 60
 GRAVITY = 0.75
@@ -18,8 +18,8 @@ SCROLL_THRESH = 200
 ROWS = 16
 COLUMNS = 150
 TILE_SIZE = SCREEN_HEIGHT // ROWS
-TILE_TYPES = 22
-MAX_LEVELS = 2
+TILE_TYPES = 23
+MAX_LEVELS = 4
 
 screen_scroll = 0
 bg_scroll = 0
@@ -31,13 +31,15 @@ start_intro = False
 
 
 # colors
-BG = (144, 201, 120)
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-RED = (255, 0, 0)
-GREEN = (0, 255, 0)
-BLUE = (0, 0, 255)
-PINK = (235, 65, 54)
+class Colors:
+    BG = (144, 201, 120)
+    WHITE = (255, 255, 255)
+    BLACK = (0, 0, 0)
+    RED = (255, 0, 0)
+    GREEN = (0, 255, 0)
+    BLUE = (0, 0, 255)
+    PINK = (235, 65, 54)
+    BEIGE = (245, 245, 220)
 
 
 # load music and sounds
@@ -46,13 +48,13 @@ pygame.mixer.music.set_volume(0)
 #pygame.mixer.music.play(-1, 0.0, 0)
 
 jump_fx = pygame.mixer.Sound('audio/jump.wav')
-jump_fx.set_volume(0)
+jump_fx.set_volume(0.1)
 
 shot_fx = pygame.mixer.Sound('audio/shot.wav')
-shot_fx.set_volume(0)
+shot_fx.set_volume(0.1)
 
 grenade_fx = pygame.mixer.Sound('audio/grenade.wav')
-grenade_fx.set_volume(0)
+grenade_fx.set_volume(0.1)
 
 # images
 # store tiles in a list
@@ -89,8 +91,8 @@ item_boxes = {
 
 }
 
-# CLASSES
-# ------------------------------------------------------------------------------------------------------------------------
+#CLASSES
+#------------------------------------------------------------------------------------------------------------------------
 class Velocity():
     def __init__(self, x, y):
         self.x = x
@@ -109,6 +111,7 @@ class Soldier(pygame.sprite.Sprite):
         self.speed = speed
         self.jump = False
         self.double_jump = False
+        self.jump_count = 0
         self.in_air = True
         self.flipped = flipped
         self.health = 100
@@ -118,13 +121,14 @@ class Soldier(pygame.sprite.Sprite):
         self.diamonds = 0
         self.moving_right = False
         self.moving_left = False
+        self.dialogue = False
 
         # ai specific variables
         self.move_counter = 0
         self.vision = pygame.Rect(0, 0, 150, 20)
         self.idling = False
         self.idling_counter = 0
-
+        self.speech = ""
         # Bullets
         self.shooting = False
         self.shoot_cooldown = 0
@@ -224,8 +228,9 @@ class Soldier(pygame.sprite.Sprite):
             self.jump = False
             self.in_air = True
 
-        self.double_jump = self.jump and self.in_air
+        self.double_jump = self.jump and self.in_air and self.jump_count <= 2
         if self.double_jump:
+            self.double_jump = False
             self.update_action(9)
             self.velocity.y = -11
             self.jump = False
@@ -240,13 +245,26 @@ class Soldier(pygame.sprite.Sprite):
             self.velocity.y
         dy += self.velocity.y
 
+        # make sure ai dont fall off and kill themself
+        if self.type != 'player':
+            falling_off = True
+            for tile in world.obstacle_list:
+                # if self.rect.x + dx is falling off not just self.rect.dx, meaning if the player is about to fall off not if he already is
+                if tile[1].colliderect(self.rect.x + dx, self.rect.y + dy, self.width, self.height):
+                    falling_off = False
+                    break
+            if falling_off:
+                self.rect.x -= dx
+
+
+
         # check for collision
         # x collision with objects
         for tile in world.obstacle_list:
             if tile[1].colliderect(self.rect.x + dx, self.rect.y, self.width, self.height):
                 dx = 0
                 # if the ai has hit a wall then make it turn around
-                if self.type == 'enemy':
+                if self.type != 'player':
                     self.direction *= -1
                     self.move_counter = 0
 
@@ -262,6 +280,7 @@ class Soldier(pygame.sprite.Sprite):
                     self.velocity.y = 0
                     self.in_air = False
                     self.double_jump = False
+                    self.jump_count = 0
                     # # if falling keep the correct animation going
                     if self.type == 'player':
                         if self.action == 5:
@@ -327,7 +346,6 @@ class Soldier(pygame.sprite.Sprite):
 
 
     def shoot(self):
-        print("aa")
         if self.shoot_cooldown == 0 and self.ammo > 0 :
             self.shoot_cooldown = 5
             bullet = Bullet(self.rect.centerx + (0.75 * self.rect.size[0] * self.direction), self.rect.centery, self.direction)
@@ -343,7 +361,7 @@ class Soldier(pygame.sprite.Sprite):
             grenade = Grenade(player.rect.centerx - (player.rect.size[0] * 0.5), player.rect.centery, -1)
         grenade_group.add(grenade)
 
-    def ai(self):
+    def ai(self, dialogue_person):
         if self.alive and player.alive:
             if random.randint(1, 200) == 1 and not self.idling:
                 self.update_action(0)  # 0: idle
@@ -352,11 +370,21 @@ class Soldier(pygame.sprite.Sprite):
 
             # check if the ai is near the player
             if self.vision.colliderect(player.rect):
-                # stop running and shoot the player 
-                self.update_action(0) # 0: Idle
-                self.shoot()
+                if self.type == 'enemy':
+                    # stop running and shoot the player 
+                    self.update_action(0) # 0: Idle
+                    self.shoot()
+                if self.type == 'fem_warrior':
+                    draw_text("Press 'e'", font, Colors.WHITE, self.x - 10, self.y - 20)
+                    dialogue_box.enabled = True
+
             # if ai doesnt see player
             else:
+
+                # if dialogue person used to be self change it back to no one, if statement so that it is only changed back once and not constantly
+                if self.type == 'fem_warrior':
+                    #dialogue_trigger = False
+                    dialogue_box.enabled = False
                 if not self.idling:
                     if self.direction == 1:
                         self.moving_right = True
@@ -390,8 +418,10 @@ class Soldier(pygame.sprite.Sprite):
 
     def draw(self):
         if self.flipped:
+            #pygame.draw.rect(screen, BLACK, self.rect)
             screen.blit(pygame.transform.flip(self.img, True, False), self.rect)
         else:
+            #pygame.draw.rect(screen, BLACK, self.rect)
             screen.blit(self.img, self.rect)
 
     def check_alive(self):
@@ -571,9 +601,9 @@ class HealthBar():
         self.health = health
         # calculate health ratio
         ratio = self.health / self.max_health
-        pygame.draw.rect(screen, BLACK, (self.x - 2, self.y - 2, 154, 24))
-        pygame.draw.rect(screen, RED, (self.x, self.y, 150, 20))
-        pygame.draw.rect(screen, GREEN, (self.x, self.y, 150 * ratio, 20))
+        pygame.draw.rect(screen, Colors.BLACK, (self.x - 2, self.y - 2, 154, 24))
+        pygame.draw.rect(screen, Colors.RED, (self.x, self.y, 150, 20))
+        pygame.draw.rect(screen, Colors.GREEN, (self.x, self.y, 150 * ratio, 20))
 
 class World():
     def __init__(self):
@@ -599,6 +629,8 @@ class World():
                         decoration = Decoration(img, x * TILE_SIZE, y * TILE_SIZE)
                         decoration_group.add(decoration)
                     elif tile == 15:
+                        if x < 1:
+                            x = 1
                         player = Soldier(x * TILE_SIZE, y * TILE_SIZE, 2, 8, 'player', False, 5)
                         health_bar = HealthBar(130, 13, player.health, player.max_health)
                     elif tile == 16:
@@ -619,6 +651,10 @@ class World():
                     elif tile == 21:
                         diamond = ItemBox('Diamond', x * TILE_SIZE, y * TILE_SIZE)
                         item_box_group.add(diamond)
+                    elif tile == 22:
+                        npc = Soldier(x * TILE_SIZE, y * TILE_SIZE, 1.65, 4, 'fem_warrior', True, 0)
+                        npc.speech = "hai yo soy un npc"
+                        enemy_group.add(npc)
         return player, health_bar
 
     def draw(self):
@@ -680,11 +716,51 @@ class ScreenFade():
 
         return fade_complete
 
+class DialogueBox(pygame.sprite.Sprite):
+    def __init__(self):
+        self.x = 50
+        self.y = SCREEN_HEIGHT - 150
+        self.width = SCREEN_WIDTH - 100
+        self.height = 100
+        self.content = ["Watch out for soldiers! If you get near them they will shoot bullets at you.", "You can press space bar to attack them, or simply use wasd to avoid them. ", "Also you are able to double jump."]
+        self.content_index = 0
+        self.speaker_name = 'Npc'
+        self.update_time = pygame.time.get_ticks()
+        self.char_counter = 0
+        self.active = False
+        self.enabled = False
+
+    def add_content(self, new_text):
+        self.content.append(new_text)
+
+    def next(self):
+        self.char_counter = 0
+        # if this is not the last index
+        if self.content_index < len(self.content) - 1:
+            self.content_index += 1
+            return True
+        else:
+            self.content_index = 0
+            return False
+
+    def draw(self):
+        pygame.draw.rect(screen, (0, 0, 0), pygame.Rect(self.x, self.y, self.width, self.height))
+        pygame.draw.rect(screen, (245, 245, 220), pygame.Rect(self.x + 4, self.y + 4, self.width - 8, self.height - 8))
+        # check if enough time has passed since the last update
+        if (pygame.time.get_ticks() - self.update_time > 5) :
+            print(self.char_counter)
+            # stop incrementing when all characters of this phrase has been printed
+            if self.char_counter < len(self.content[self.content_index]):
+                self.char_counter += 1
+            self.update_time = pygame.time.get_ticks()
+            draw_text(str(self.speaker_name) + ": " + self.content[self.content_index][0:self.char_counter], font, (0, 0, 0), self.x + 10, self.y + 10)
+        draw_text("Press Enter to continue...", font, (0, 0, 0), 690, self.y + self.height - 35)
+
 
 # FUNCTIONS
 # ------------------------------------------------------------------------------------------------------------------------
 def draw_background():
-    screen.fill(BG)
+    screen.fill(Colors.BG)
     width = sky_img.get_width()
     for i in range(5):
         screen.blit(sky_img, (width * i - bg_scroll * 0.5, 0))
@@ -718,7 +794,7 @@ def reset_level():
 
 
 # GAME LOOP
-# ------------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------ ------------------------------------------
 # create sprite groups
 bullet_group = pygame.sprite.Group()
 grenade_group = pygame.sprite.Group()
@@ -735,9 +811,13 @@ exit_button = button.Button(SCREEN_WIDTH // 2 - 110, SCREEN_HEIGHT // 2 + 50, ex
 restart_button = button.Button(SCREEN_WIDTH // 2 - 114, SCREEN_HEIGHT // 2 - 80, restart_img, 2)
 
 # create screen fades
-intro_fade = ScreenFade(1, BLACK, 20)
-death_fade = ScreenFade(2, PINK, 14)
-victory_fade = ScreenFade(2, BLUE, 14)
+intro_fade = ScreenFade(1, Colors.BLACK, 20)
+death_fade = ScreenFade(2, Colors.PINK, 14)
+victory_fade = ScreenFade(2, Colors.BLUE, 14)
+
+# dialogue
+dialogue_person = {}
+dialogue_box = DialogueBox()
 
 
 
@@ -748,7 +828,7 @@ for row in range(ROWS):
     r = [-1] * COLUMNS
     world_data.append(r)
 # load in level data and create world
-with open(f'level{level}_data.csv', newline='') as csvfile:
+with open(f'levels/level{level}_data.csv', newline='') as csvfile:
     reader = csv.reader(csvfile, delimiter=',')
     for x, row in enumerate(reader):
         for y, tile in enumerate(row):
@@ -759,6 +839,7 @@ player, health_bar = world.process_data(world_data)
 quit = False
 gameover = False
 win = False
+
 while not quit:
     clock.tick(FPS)
 
@@ -775,12 +856,12 @@ while not quit:
             draw_background()
             world.draw()
             # show ammo
-            draw_text(f'Health: {player.health}', font, RED, 10, 15)
+            draw_text(f'Health: {player.health}', font, Colors.RED, 10, 15)
             health_bar.draw(player.health)
-            draw_text(f'Grenades: {player.grenades_count}', font, RED, 10, 65)
+            draw_text(f'Grenades: {player.grenades_count}', font, Colors.RED, 10, 65)
             for i in range(player.grenades_count):
                 screen.blit(grenade_img, (140 + (i * 10), 70))
-            draw_text(f'Diamonds: {player.diamonds}', font, RED, 10, 115)
+            draw_text(f'Diamonds: {player.diamonds}', font, Colors.RED, 10, 115)
             for i in range(player.diamonds):
                 screen.blit(pygame.transform.scale(diamond_img, (round(TILE_SIZE/2), round(TILE_SIZE/2))), (140 + (i * 20), 112))
 
@@ -830,7 +911,7 @@ while not quit:
                 if level <= MAX_LEVELS:
                     try:
                         # reload the world on the same level and recreate player
-                        with open(f'level{level}_data.csv', newline='') as csvfile:
+                        with open(f'levels/level{level}_data.csv', newline='') as csvfile:
                             reader = csv.reader(csvfile, delimiter=',')
                             for x, row in enumerate(reader):
                                 for y, tile in enumerate(row):
@@ -854,7 +935,7 @@ while not quit:
                         level = 0
                         world_data = reset_level()
                         # reload the world on the same level and recreate player
-                        with open(f'level{level}_data.csv', newline='') as csvfile:
+                        with open(f'levels/level{level}_data.csv', newline='') as csvfile:
                             reader = csv.reader(csvfile, delimiter=',')
                             for x, row in enumerate(reader):
                                 for y, tile in enumerate(row):
@@ -866,12 +947,13 @@ while not quit:
 
 
             for enemy in enemy_group:
-                enemy.ai()
+                enemy.ai(dialogue_person)
                 enemy.update()
                 enemy.draw()
-                print(enemy.health)
 
-
+            # dialogue
+            if dialogue_box.active:
+                dialogue_box.draw()
             if not player.alive:
                 all_enemies_dead = True
                 for enemy in enemy_group:
@@ -893,7 +975,7 @@ while not quit:
                 level = 0
                 world_data = reset_level()
                 # reload the world on the same level and recreate player
-                with open(f'level{level}_data.csv', newline='') as csvfile:
+                with open(f'levels/level{level}_data.csv', newline='') as csvfile:
                     reader = csv.reader(csvfile, delimiter=',')
                     for x, row in enumerate(reader):
                         for y, tile in enumerate(row):
@@ -922,27 +1004,31 @@ while not quit:
                     player.moving_left = True
                     player.flipped = True
                     player.update_action(2) # Run
+                if event.key == pygame.K_e:
+                    if dialogue_box.enabled:
+                        dialogue_box.active = True
                 if event.key == pygame.K_d:
-                    print("hey")
                     player.moving_right = True
                     player.flipped = False
                     player.update_action(2) # Run
                 if event.key == pygame.K_w and player.alive:
                     player.jump = True
                     jump_fx.play()
+                    player.jump_count += 1
                 if event.key == pygame.K_s and not player.in_air:
                     if player.moving_left or player.moving_right:
                         player.sliding = True
                         player.update_action(6) # Slide
                     else:
                         player.update_action(3) # Crouch
-                if event.key == pygame.K_SPACE and player.alive:
-                    player.shooting = True
                 if event.key == pygame.K_q:
                     player.grenade = True
                 if event.key == pygame.K_SPACE:
                     player.update_action(1) # Attack
                     player.attacking = True
+                if event.key == pygame.K_RETURN:
+                    if not dialogue_box.next():
+                        dialogue_box.active = False
 
             # keyboard button released
             if event.type == pygame.KEYUP:
@@ -958,13 +1044,15 @@ while not quit:
                         player.sliding = False
                     else:
                         player.update_action(0)
-                if event.key == pygame.K_SPACE and player.alive:
-                    player.shooting = False
                 if event.key == pygame.K_q:
                     player.grenade = False
                     player.grenade_thrown = False
                 if event.key == pygame.K_SPACE:
-                    player.update_action(0) # Idle
+                    if player.moving_right or player.moving_left:
+                        player.update_action(2) # running
+                    else:
+                        player.update_action(0) # Idle
+
                     player.attacking = False
     pygame.display.update()
             

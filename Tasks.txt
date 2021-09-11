@@ -7,7 +7,8 @@ game:
 *fix slide and crouch
 -add dope music
 *add collectible diamond
-- prevent more than double jump
+*prevent more than double jump
+-fix player's rect
 
 level editor:
 - ask if they are sure they wanna save and tell user that they cannot undo this action.
