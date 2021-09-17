@@ -170,9 +170,9 @@ class Soldier(pygame.sprite.Sprite):
         # settings
         self.img = self.animation_list[self.action][self.animate_index]
         self.rect = self.img.get_rect()
-        self.rect.center = (x, y)
         self.width = self.img.get_width()
         self.height = self.img.get_height()
+        self.rect.center = (x + 100, y)
 
 
     def update(self):
@@ -261,7 +261,7 @@ class Soldier(pygame.sprite.Sprite):
         # check for collision
         # x collision with objects
         for tile in world.obstacle_list:
-            if tile[1].colliderect(self.rect.x + dx, self.rect.y, self.width, self.height):
+            if tile[1].colliderect(self.rect.x + dx + (self.width/4), self.rect.y, self.width - (self.width/2+10), self.height):
                 dx = 0
                 # if the ai has hit a wall then make it turn around
                 if self.type != 'player':
@@ -270,7 +270,7 @@ class Soldier(pygame.sprite.Sprite):
 
         # y collision
         for tile in world.obstacle_list:
-            if tile[1].colliderect(self.rect.x, self.rect.y + dy, self.width, self.height):
+            if tile[1].colliderect(self.rect.x + (self.width/4), self.rect.y + dy, self.width - (self.width/2+10), self.height):
                 # check if below the ground, i.e jumping
                 if self.velocity.y < 0:
                     self.velocity.y = 0
@@ -380,7 +380,6 @@ class Soldier(pygame.sprite.Sprite):
 
             # if ai doesnt see player
             else:
-
                 # if dialogue person used to be self change it back to no one, if statement so that it is only changed back once and not constantly
                 if self.type == 'fem_warrior':
                     #dialogue_trigger = False
@@ -418,10 +417,12 @@ class Soldier(pygame.sprite.Sprite):
 
     def draw(self):
         if self.flipped:
-            #pygame.draw.rect(screen, BLACK, self.rect)
+            #blackRect = pygame.Rect(self.rect.left + (self.width/4), self.rect.top, self.width - (self.width/2+10), self.height)
+            #pygame.draw.rect(screen, Colors.BLACK, blackRect)
             screen.blit(pygame.transform.flip(self.img, True, False), self.rect)
         else:
-            #pygame.draw.rect(screen, BLACK, self.rect)
+            #blackRect = pygame.Rect(self.rect.left + (self.width/4), self.rect.top, self.width - (self.width/2+10), self.height)
+            #pygame.draw.rect(screen, Colors.BLACK, blackRect)
             screen.blit(self.img, self.rect)
 
     def check_alive(self):
@@ -719,7 +720,7 @@ class ScreenFade():
 class DialogueBox(pygame.sprite.Sprite):
     def __init__(self):
         self.x = 50
-        self.y = SCREEN_HEIGHT - 150
+        self.y = SCREEN_HEIGHT/2 + 100
         self.width = SCREEN_WIDTH - 100
         self.height = 100
         self.content = ["Watch out for soldiers! If you get near them they will shoot bullets at you.", "You can press space bar to attack them, or simply use wasd to avoid them. ", "Also you are able to double jump."]
@@ -748,7 +749,6 @@ class DialogueBox(pygame.sprite.Sprite):
         pygame.draw.rect(screen, (245, 245, 220), pygame.Rect(self.x + 4, self.y + 4, self.width - 8, self.height - 8))
         # check if enough time has passed since the last update
         if (pygame.time.get_ticks() - self.update_time > 5) :
-            print(self.char_counter)
             # stop incrementing when all characters of this phrase has been printed
             if self.char_counter < len(self.content[self.content_index]):
                 self.char_counter += 1

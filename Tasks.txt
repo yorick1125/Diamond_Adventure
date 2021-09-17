@@ -8,13 +8,15 @@ game:
 -add dope music
 *add collectible diamond
 *prevent more than double jump
--fix player's rect
+*fix player's rect
+*dialogue mode
+- add specific texts for different npcs
 
 level editor:
 - ask if they are sure they wanna save and tell user that they cannot undo this action.
 * confirm that save was successful/unsuccesful
 * confirm that load was succesful/unsuccesful
--switch player from soldier to adventurer
+*switch player from soldier to adventurer
 -switch enemy from soldier to snakes
 
 enemies:
